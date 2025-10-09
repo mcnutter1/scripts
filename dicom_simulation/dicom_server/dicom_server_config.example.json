@@ -1,0 +1,14 @@
+{
+  "base_dir": "/opt/dicom_server",
+  "dicom_host": "0.0.0.0",
+  "dicom_port": 4790,
+  "api_host": "0.0.0.0",
+  "api_port": 8080,
+  "heartbeat_interval": 5,
+  "log_file": "logs/dicom_server.log",
+  "pid_file": "run/dicom_server.pid",
+  "log_max_bytes": 5242880,
+  "log_backup_count": 3,
+  "log_tail_lines": 200,
+  "ae_title": "ORTHANC"
+}

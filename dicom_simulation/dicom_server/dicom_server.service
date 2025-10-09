@@ -1,0 +1,16 @@
+[Unit]
+Description=DICOM Simulation Server
+After=network.target
+
+[Service]
+Type=forking
+WorkingDirectory=/opt/dicom_server
+ExecStart=/usr/bin/env python3 /opt/dicom_server/dicom_server.py start --config /opt/dicom_server/dicom_server_config.json
+ExecStop=/usr/bin/env python3 /opt/dicom_server/dicom_server.py stop --config /opt/dicom_server/dicom_server_config.json
+ExecReload=/usr/bin/env python3 /opt/dicom_server/dicom_server.py restart --config /opt/dicom_server/dicom_server_config.json
+PIDFile=/opt/dicom_server/run/dicom_server.pid
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
