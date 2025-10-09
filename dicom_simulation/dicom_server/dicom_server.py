@@ -168,6 +168,9 @@ class ClientStats:
     active_sessions: int = 0
     last_remote_port: Optional[int] = None
     recent_sessions: deque = field(default_factory=lambda: deque(maxlen=50))
+    ae_titles: set[str] = field(default_factory=set)
+    implementation_versions: set[str] = field(default_factory=set)
+    implementation_class_uids: set[str] = field(default_factory=set)
 
     def to_payload(self) -> Dict[str, object]:
         sessions: List[Dict[str, object]] = []
@@ -181,6 +184,10 @@ class ClientStats:
                 }
             )
 
+        known_titles = sorted(self.ae_titles)
+        known_versions = sorted(self.implementation_versions)
+        known_class_uids = sorted(self.implementation_class_uids)
+
         return {
             "ip": self.ip,
             "ae_title": self.ae_title,
@@ -192,7 +199,32 @@ class ClientStats:
             "active_sessions": self.active_sessions,
             "last_remote_port": self.last_remote_port,
             "recent_sessions": sessions,
+            "known_ae_titles": known_titles,
+            "known_implementation_versions": known_versions,
+            "known_implementation_class_uids": known_class_uids,
         }
+
+    def note_identity(
+        self,
+        ae_title: Optional[str] = None,
+        implementation_version: Optional[str] = None,
+        implementation_class_uid: Optional[str] = None,
+    ) -> None:
+        if ae_title:
+            normalized = ae_title.strip()
+            if normalized and normalized.upper() != "UNKNOWN":
+                self.ae_title = normalized
+                self.ae_titles.add(normalized)
+        if implementation_version:
+            normalized_version = implementation_version.strip()
+            if normalized_version:
+                self.implementation_version = normalized_version
+                self.implementation_versions.add(normalized_version)
+        if implementation_class_uid:
+            normalized_uid = implementation_class_uid.strip()
+            if normalized_uid:
+                self.implementation_class_uid = normalized_uid
+                self.implementation_class_uids.add(normalized_uid)
 
 
 def load_config(path_str: Optional[str]) -> ServerConfig:
@@ -438,13 +470,31 @@ class DICOMServer:
             host, port = peer[0], peer[1]
         elif isinstance(peer, str):
             host = peer
-        return host, int(port) if port is not None else None
+        elif hasattr(peer, "host"):
+            host = getattr(peer, "host")
+        if isinstance(host, bytes):
+            try:
+                host = host.decode("utf-8", errors="ignore")
+            except Exception:
+                host = None
+        if host is not None:
+            host = str(host).strip()
+            if not host:
+                host = None
+        normalized_port = None
+        if port is not None:
+            try:
+                normalized_port = int(port)
+            except (TypeError, ValueError):
+                normalized_port = None
+        return host, normalized_port
 
     @staticmethod
-    def _client_key(peer_host: Optional[str], calling_ae: Optional[str]) -> str:
-        host = (peer_host or "unknown").strip() or "unknown"
-        ae = (calling_ae or "UNKNOWN").strip() or "UNKNOWN"
-        return f"{host}::{ae}"
+    def _client_key(peer_host: Optional[str]) -> str:
+        host = (peer_host or "").strip()
+        if host:
+            return host
+        return "unknown"
 
     def _capture_snapshot_locked(self, force: bool = False) -> None:
         now = time.time()
@@ -692,9 +742,9 @@ a:hover {{ text-decoration: underline; }}
       <div class="sub" id="card-max-info">Peak 0 observed</div>
     </div>
     <div class="card">
-      <h2>Known Clients</h2>
+      <h2>Unique Clients</h2>
       <div class="value" id="card-clients">0</div>
-      <div class="sub" id="card-clients-active">0 active</div>
+      <div class="sub" id="card-clients-active">0 active IPs</div>
     </div>
   </section>
 
@@ -724,7 +774,7 @@ a:hover {{ text-decoration: underline; }}
         <thead>
           <tr>
             <th>Last Seen</th>
-            <th>Client</th>
+            <th>Client IP</th>
             <th>AE Title</th>
             <th>Version</th>
             <th>Sessions</th>
@@ -920,12 +970,21 @@ function updateStatusCards(data) {{
   const clients = Array.isArray(data?.clients) ? data.clients : [];
   const totalClients = data?.known_client_count ?? clients.length;
   const activeClients = data?.active_client_count ?? clients.filter((client) => (client?.active_sessions ?? 0) > 0).length;
-  if (clientsLabel) clientsLabel.textContent = totalClients;
-  if (clientsActiveLabel) clientsActiveLabel.textContent = `${{activeClients}} active`;
+  if (clientsLabel) {{
+    clientsLabel.textContent = totalClients;
+  }}
+  if (clientsActiveLabel) {{
+    const activeSuffix = activeClients === 1 ? 'IP' : 'IPs';
+    clientsActiveLabel.textContent = `${{activeClients}} active ${{activeSuffix}}`;
+  }}
   if (clientsBadge) {{
-    clientsBadge.textContent = totalClients === 0
-      ? 'No clients yet'
-      : `${{activeClients}} active of ${{totalClients}} known`;
+    if (totalClients === 0) {{
+      clientsBadge.textContent = 'No clients yet';
+    }} else {{
+      const uniqueSuffix = totalClients === 1 ? 'unique IP' : 'unique IPs';
+      const activeSuffix = activeClients === 1 ? 'active IP' : 'active IPs';
+      clientsBadge.textContent = `${{activeClients}} ${{activeSuffix}} of ${{totalClients}} ${{uniqueSuffix}}`;
+    }}
   }}
 
   renderClientsTable(clients);
@@ -1011,14 +1070,49 @@ function renderClientsTable(clients) {{
     row.appendChild(clientCell);
 
     const aeCell = document.createElement('td');
-    aeCell.textContent = client?.ae_title || '—';
+    const aeTitles = Array.isArray(client?.known_ae_titles)
+      ? client.known_ae_titles.filter((title) => title && title.toUpperCase() !== 'UNKNOWN')
+      : [];
+    let aeDisplay = client?.ae_title || '—';
+    if (aeTitles.length === 1) {{
+      aeDisplay = aeTitles[0];
+    }} else if (aeTitles.length > 1) {{
+      aeDisplay = `${{aeTitles[0]}} (+${{aeTitles.length - 1}} more)`;
+      aeCell.title = aeTitles.join(', ');
+    }}
+    if (typeof aeDisplay === 'string' && aeDisplay.toUpperCase() === 'UNKNOWN') {{
+      aeDisplay = '—';
+    }}
+    aeCell.textContent = aeDisplay;
+    if (!aeCell.title && client?.ae_title && client.ae_title.toUpperCase() !== 'UNKNOWN') {{
+      aeCell.title = client.ae_title;
+    }}
     row.appendChild(aeCell);
 
     const versionCell = document.createElement('td');
-    const version = client?.implementation_version || '—';
-    versionCell.textContent = version;
-    if (client?.implementation_class_uid) {{
-      versionCell.title = `Implementation UID: ${{client.implementation_class_uid}}`;
+    const versions = Array.isArray(client?.known_implementation_versions)
+      ? client.known_implementation_versions.filter((item) => item && item.toUpperCase() !== 'UNKNOWN')
+      : [];
+    let versionDisplay = client?.implementation_version || '—';
+    if (versions.length === 1) {{
+      versionDisplay = versions[0];
+    }} else if (versions.length > 1) {{
+      versionDisplay = `${{versions[0]}} (+${{versions.length - 1}} more)`;
+    }}
+    if (typeof versionDisplay === 'string' && versionDisplay.toUpperCase() === 'UNKNOWN') {{
+      versionDisplay = '—';
+    }}
+    versionCell.textContent = versionDisplay;
+    const uidList = Array.isArray(client?.known_implementation_class_uids)
+      ? client.known_implementation_class_uids.filter((item) => item && item.toUpperCase() !== 'UNKNOWN')
+      : [];
+    if (uidList.length === 0 && client?.implementation_class_uid && client.implementation_class_uid.toUpperCase() !== 'UNKNOWN') {{
+      uidList.push(client.implementation_class_uid);
+    }}
+    const uniqueUidList = Array.from(new Set(uidList));
+    if (uniqueUidList.length > 0) {{
+      const uidLabel = uniqueUidList.length === 1 ? 'Implementation UID' : 'Implementation UIDs';
+      versionCell.title = `${{uidLabel}}: ${{uniqueUidList.join(', ')}}`;
     }}
     row.appendChild(versionCell);
 
@@ -1461,7 +1555,7 @@ setInterval(refreshLogs, 20000);
             if self._active_connections > self._max_concurrent_connections:
                 self._max_concurrent_connections = self._active_connections
 
-            client_key = self._client_key(peer_host, calling_ae)
+            client_key = self._client_key(peer_host)
             client = self._client_stats.get(client_key)
             if not client:
                 client = ClientStats(
@@ -1471,16 +1565,14 @@ setInterval(refreshLogs, 20000);
                 )
                 client.first_seen = now_iso
                 self._client_stats[client_key] = client
+            client.key = client_key
 
-            if calling_ae and calling_ae != "UNKNOWN":
-                client.ae_title = calling_ae
-            if impl_version:
-                client.implementation_version = impl_version
-            if impl_class_uid:
-                client.implementation_class_uid = impl_class_uid
+            if peer_host:
+                client.ip = peer_host
+            client.note_identity(calling_ae, impl_version, impl_class_uid)
             if peer_port is not None:
                 client.last_remote_port = int(peer_port)
-
+            
             client.total_sessions += 1
             client.active_sessions += 1
             client.last_seen = now_iso
@@ -1581,7 +1673,7 @@ setInterval(refreshLogs, 20000);
             session_id = self._assoc_session_map.get(id(assoc))
             client_key = self._session_index.get(session_id) if session_id else None
             client = self._client_stats.get(client_key) if client_key else None
-            new_key = self._client_key(peer_host, calling_ae)
+            new_key = self._client_key(peer_host)
             if client is None:
                 client = self._client_stats.get(new_key)
             if client is None:
@@ -1604,14 +1696,10 @@ setInterval(refreshLogs, 20000);
                 for sid, key in list(self._session_index.items()):
                     if key == client_key:
                         self._session_index[sid] = new_key
+            client.key = new_key
             if peer_host:
                 client.ip = peer_host
-            if calling_ae:
-                client.ae_title = calling_ae
-            if impl_version:
-                client.implementation_version = impl_version
-            if impl_class_uid:
-                client.implementation_class_uid = impl_class_uid
+            client.note_identity(calling_ae, impl_version, impl_class_uid)
             if peer_port is not None:
                 client.last_remote_port = peer_port
             if session_id:
