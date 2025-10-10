@@ -189,6 +189,7 @@ class ClientStats:
         known_class_uids = sorted(self.implementation_class_uids)
 
         return {
+            "key": self.key,
             "ip": self.ip,
             "ae_title": self.ae_title,
             "implementation_version": self.implementation_version,
@@ -495,6 +496,21 @@ class DICOMServer:
         if host:
             return host
         return "unknown"
+
+    @staticmethod
+    def _assoc_requestor_host(assoc) -> Optional[str]:
+        if assoc is None or not hasattr(assoc, "requestor"):
+            return None
+        candidates = [
+            getattr(assoc.requestor, "address", None),
+            getattr(assoc.requestor, "ip_address", None),
+            getattr(assoc.requestor, "host", None),
+        ]
+        for value in candidates:
+            decoded = DICOMServer._decode_assoc_value(value)
+            if decoded:
+                return decoded
+        return None
 
     def _capture_snapshot_locked(self, force: bool = False) -> None:
         now = time.time()
@@ -1532,6 +1548,10 @@ setInterval(refreshLogs, 20000);
                 peer = None
         assoc = getattr(event, "assoc", None)
         peer_host, peer_port = self._peer_host_port(peer)
+        if not peer_host:
+            requestor_host = self._assoc_requestor_host(assoc)
+            if requestor_host:
+                peer_host = requestor_host
 
         calling_ae = None
         impl_version = None
@@ -1555,30 +1575,6 @@ setInterval(refreshLogs, 20000);
             if self._active_connections > self._max_concurrent_connections:
                 self._max_concurrent_connections = self._active_connections
 
-            client_key = self._client_key(peer_host)
-            client = self._client_stats.get(client_key)
-            if not client:
-                client = ClientStats(
-                    key=client_key,
-                    ip=peer_host or "unknown",
-                    ae_title=calling_ae or "UNKNOWN",
-                )
-                client.first_seen = now_iso
-                self._client_stats[client_key] = client
-            client.key = client_key
-
-            if peer_host:
-                client.ip = peer_host
-            client.note_identity(calling_ae, impl_version, impl_class_uid)
-            if peer_port is not None:
-                client.last_remote_port = int(peer_port)
-            
-            client.total_sessions += 1
-            client.active_sessions += 1
-            client.last_seen = now_iso
-            if client.first_seen is None:
-                client.first_seen = now_iso
-
             session_entry = {
                 "session_id": session_id,
                 "started_at": now_iso,
@@ -1586,9 +1582,10 @@ setInterval(refreshLogs, 20000);
                 "duration_seconds": None,
                 "remote_port": peer_port,
                 "started_ts": time.time(),
+                "client_key": None,
             }
-            client.recent_sessions.appendleft(session_entry)
-            self._session_index[session_id] = client_key
+
+            self._session_index[session_id] = ""
             self._session_entries[session_id] = session_entry
             self._register_peer_session(session_id, assoc, peer_key)
             self._capture_snapshot_locked(force=True)
@@ -1625,6 +1622,9 @@ setInterval(refreshLogs, 20000);
             if session_id:
                 client_key = self._session_index.pop(session_id, None)
                 session_entry = self._session_entries.pop(session_id, None)
+                if session_entry and not client_key:
+                    client_key = session_entry.get("client_key")
+
                 if client_key:
                     client = self._client_stats.get(client_key)
                     if client:
@@ -1638,10 +1638,9 @@ setInterval(refreshLogs, 20000);
                             session_entry["duration_seconds"] = round(duration, 2)
                         session_entry.pop("started_ts", None)
                         session_entry.pop("session_id", None)
-                else:
-                    if session_entry:
-                        session_entry.pop("started_ts", None)
-                        session_entry.pop("session_id", None)
+                elif session_entry:
+                    session_entry.pop("started_ts", None)
+                    session_entry.pop("session_id", None)
             self._capture_snapshot_locked(force=True)
 
         if peer_host or peer_port:
@@ -1661,6 +1660,10 @@ setInterval(refreshLogs, 20000);
         except Exception:
             peer = None
         peer_host, peer_port = self._peer_host_port(peer)
+        if not peer_host:
+            requestor_host = self._assoc_requestor_host(assoc)
+            if requestor_host:
+                peer_host = requestor_host
         calling_ae = self._decode_assoc_value(getattr(assoc.requestor, "ae_title", None))
         impl_version = self._decode_assoc_value(
             getattr(assoc.requestor, "implementation_version_name", None)
@@ -1671,44 +1674,59 @@ setInterval(refreshLogs, 20000);
         now_iso = self._current_time_iso()
         with self._connections_lock:
             session_id = self._assoc_session_map.get(id(assoc))
-            client_key = self._session_index.get(session_id) if session_id else None
-            client = self._client_stats.get(client_key) if client_key else None
-            new_key = self._client_key(peer_host)
-            if client is None:
-                client = self._client_stats.get(new_key)
+            session_entry = self._session_entries.get(session_id) if session_id else None
+
+            client_key = self._client_key(peer_host)
+            if client_key == "unknown" and session_id:
+                client_key = f"unknown-{session_id}"
+
+            client = self._client_stats.get(client_key)
             if client is None:
                 client = ClientStats(
-                    key=new_key,
+                    key=client_key,
                     ip=peer_host or "unknown",
                     ae_title=calling_ae or "UNKNOWN",
                 )
                 client.first_seen = now_iso
-                self._client_stats[new_key] = client
-            if session_id and self._session_index.get(session_id) != new_key:
-                self._session_index[session_id] = new_key
-            if client_key and new_key != client_key:
-                # Re-key existing client so future lookups use populated AE
-                self._client_stats.pop(client_key, None)
-                client.key = new_key
-                self._client_stats[new_key] = client
-                if session_id:
-                    self._session_index[session_id] = new_key
-                for sid, key in list(self._session_index.items()):
-                    if key == client_key:
-                        self._session_index[sid] = new_key
-            client.key = new_key
+                self._client_stats[client_key] = client
+
+            client.key = client_key
             if peer_host:
                 client.ip = peer_host
             client.note_identity(calling_ae, impl_version, impl_class_uid)
             if peer_port is not None:
                 client.last_remote_port = peer_port
-            if session_id:
-                entry = self._session_entries.get(session_id)
-                if entry and peer_port is not None:
-                    entry["remote_port"] = peer_port
+
+            client.total_sessions += 1
+            client.active_sessions += 1
             client.last_seen = now_iso
             if client.first_seen is None:
                 client.first_seen = now_iso
+
+            if session_entry is None:
+                session_entry = {
+                    "session_id": session_id or f"session-{time.time_ns()}",
+                    "started_at": now_iso,
+                    "ended_at": None,
+                    "duration_seconds": None,
+                    "remote_port": peer_port,
+                    "started_ts": time.time(),
+                    "client_key": client_key,
+                }
+                if session_id:
+                    self._session_entries[session_id] = session_entry
+            else:
+                session_entry["client_key"] = client_key
+                if peer_port is not None:
+                    session_entry["remote_port"] = peer_port
+
+            # ensure session entry is visible in recent history
+            if session_entry not in client.recent_sessions:
+                client.recent_sessions.appendleft(session_entry)
+
+            if session_id:
+                self._session_index[session_id] = client_key
+
             self._connection_history.append(
                 {
                     "timestamp": now_iso,
