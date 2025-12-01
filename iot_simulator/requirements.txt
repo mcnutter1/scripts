@@ -1,1 +1,97 @@
-# No third-party dependencies required; standard library only.
+################################################################################
+# IoT Simulator Requirements
+# Python 3.7+ required
+################################################################################
+
+# SSH Server (ssh_server2.py)
+# Required for SSH simulation functionality
+paramiko>=2.11.0
+
+# Note: All other modules use Python standard library only:
+# - http.server (web servers)
+# - socket (SNMP, JetDirect, network)
+# - argparse (command-line parsing)
+# - json (configuration)
+# - logging (core_logger)
+# - threading (concurrent connections)
+# - ipaddress (IP validation)
+# - datetime (timestamps)
+# - struct (binary data)
+# - subprocess (daemon process management)
+# - signal (process control)
+
+################################################################################
+# Optional Dependencies for Enhanced Functionality
+################################################################################
+
+# For better SNMP support (optional - simulator has built-in SNMP)
+# Uncomment if you want to use pysnmp instead of built-in SNMP server:
+# pysnmp>=4.4.12
+# pyasn1>=0.4.8
+
+# For cryptography enhancements (optional)
+# cryptography>=3.4.8
+
+################################################################################
+# System-Level Dependencies (install via apt/yum)
+################################################################################
+# These are not Python packages but system utilities needed for full functionality:
+#
+# Ubuntu/Debian:
+#   sudo apt-get install -y \
+#     python3 \
+#     python3-pip \
+#     avahi-daemon \
+#     avahi-utils \
+#     net-tools \
+#     iproute2 \
+#     netcat \
+#     snmp \
+#     snmp-mibs-downloader
+#
+# macOS:
+#   brew install python3
+#   # Most networking tools are already available
+#
+# Note: The impersonate_hp_printer.sh script requires root privileges
+# and Ubuntu 24.04 or similar Linux distribution
+################################################################################
+
+################################################################################
+# Development Dependencies (optional)
+################################################################################
+# Uncomment for development and testing:
+
+# Testing
+# pytest>=7.0.0
+# pytest-cov>=3.0.0
+
+# Code quality
+# pylint>=2.12.0
+# black>=22.0.0
+# flake8>=4.0.0
+
+# Documentation
+# sphinx>=4.3.0
+# sphinx-rtd-theme>=1.0.0
+
+################################################################################
+# Installation Instructions
+################################################################################
+#
+# Basic installation (required):
+#   pip install -r requirements.txt
+#
+# Development installation (optional):
+#   pip install -r requirements.txt
+#   # Uncomment dev dependencies above first
+#
+# System setup for HP printer simulation:
+#   sudo ./setup_hp_printer.sh
+#
+# Manual system package installation:
+#   sudo apt-get update
+#   sudo apt-get install -y python3 python3-pip avahi-daemon
+#
+################################################################################
+
