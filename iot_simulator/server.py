@@ -5,6 +5,7 @@ import time
 import json
 import subprocess
 import importlib.util
+import argparse
 from core_logger import get_logger
 
 #sudo setcap 'cap_net_bind_service=+ep' /usr/bin/python3.11#
@@ -18,12 +19,27 @@ os.makedirs(LOGS_DIR, exist_ok=True)
 
 PID_FILE = os.path.join(BASE_DIR, "my_daemon.pid")
 PROCESS_PID_FILE = os.path.join(BASE_DIR, "my_daemon_subprocesses.pid")
-CONFIG_FILE = "config.json"
+CONFIG_FILE = "config.json"  # Default config file
 processes = []
 
-def load_config():
-    with open(CONFIG_FILE) as f:
-        return json.load(f)
+def load_config(config_file=None):
+    """Load configuration from specified file or default"""
+    config_path = config_file if config_file else CONFIG_FILE
+    if not os.path.exists(config_path):
+        logger.error(f"Configuration file not found: {config_path}")
+        print(f"[ERROR] Configuration file not found: {config_path}")
+        sys.exit(1)
+    
+    try:
+        with open(config_path) as f:
+            config = json.load(f)
+            logger.info(f"Loaded configuration from: {config_path}")
+            print(f"[INFO] Using configuration: {config_path}")
+            return config
+    except json.JSONDecodeError as e:
+        logger.error(f"Invalid JSON in config file: {e}")
+        print(f"[ERROR] Invalid JSON in config file: {e}")
+        sys.exit(1)
 
 def load_and_run_servers(includes, json_config):
     for entry in includes:
@@ -54,8 +70,8 @@ def load_and_run_servers(includes, json_config):
             logger.exception(f"Failed to start {path}: {e}")
             print(f"[ERROR] Failed to start {path}: {e}")
 
-def start():
-    config = load_config()
+def start(config_file=None):
+    config = load_config(config_file)
     servers = config.get("servers", [])
     json_config = config.get("globals", {})
 
@@ -75,7 +91,7 @@ def start():
     sys.stdout.flush()
     sys.stderr.flush()
 
-    config = load_config()
+    config = load_config(config_file)
     servers = config.get("servers", [])
     load_and_run_servers(servers, json_config)
     write_process_pids()
@@ -126,20 +142,87 @@ def stop():
     os.remove(PID_FILE)
     print("Daemon stopped.")
 
-def restart():
+def restart(config_file=None):
     stop()
     time.sleep(1)
-    start()
+    start(config_file)
+
+def parse_arguments():
+    """Parse command line arguments"""
+    parser = argparse.ArgumentParser(
+        description='IoT Device Simulator Daemon',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Start with default config.json
+  python server.py start
+  
+  # Start with custom config file
+  python server.py start --config config_hp_printer.json
+  
+  # Stop the daemon
+  python server.py stop
+  
+  # Restart with different config
+  python server.py restart --config config_hp_printer.json
+        """
+    )
+    
+    parser.add_argument(
+        'action',
+        choices=['start', 'stop', 'restart', 'status'],
+        help='Action to perform: start, stop, restart, or status'
+    )
+    
+    parser.add_argument(
+        '--config',
+        '-c',
+        type=str,
+        default=None,
+        help='Path to configuration file (default: config.json)'
+    )
+    
+    return parser.parse_args()
+
+def status():
+    """Check daemon status"""
+    if os.path.exists(PID_FILE):
+        with open(PID_FILE, 'r') as f:
+            pid = int(f.read())
+        
+        # Check if process is actually running
+        try:
+            os.kill(pid, 0)
+            print(f"Daemon is running with PID {pid}")
+            
+            # Check subprocesses
+            if os.path.exists(PROCESS_PID_FILE):
+                with open(PROCESS_PID_FILE, 'r') as f:
+                    pids = [int(line.strip()) for line in f if line.strip()]
+                print(f"Running {len(pids)} subprocess(es):")
+                for pid in pids:
+                    try:
+                        os.kill(pid, 0)
+                        print(f"  - PID {pid}: Running")
+                    except ProcessLookupError:
+                        print(f"  - PID {pid}: Not running")
+        except ProcessLookupError:
+            print(f"Daemon PID {pid} not running (stale PID file)")
+            print("Run 'stop' to clean up, then 'start' again")
+    else:
+        print("Daemon is not running.")
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2 or sys.argv[1] not in ("start", "stop", "restart"):
-        print("Usage: python server.py [start|stop|restart]")
-        sys.exit(1)
-
-    action = sys.argv[1]
+    args = parse_arguments()
+    
+    action = args.action
+    config_file = args.config
+    
     if action == "start":
-        start()
+        start(config_file)
     elif action == "stop":
         stop()
     elif action == "restart":
-        restart()
+        restart(config_file)
+    elif action == "status":
+        status()

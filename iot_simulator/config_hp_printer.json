@@ -1,0 +1,36 @@
+{
+  "globals": {
+    "system_name": "HP LaserJet Enterprise M609dn",
+    "ip": "192.168.1.100",
+    "mac": "A0:B3:CC:D4:E5:F6",
+    "hostname": "HPLJ-M609-001",
+    "log_level": "INFO",
+    "serial": "JPBCS12345",
+    "model": "HP LaserJet Enterprise M609dn",
+    "firmware": "2409081_052604",
+    "location": "Building A - Floor 2",
+    "contact": "IT Department",
+    "page_count": 45782,
+    "toner_level": 68,
+    "toner_capacity": 10000,
+    "paper_tray1": 250,
+    "paper_tray2": 500,
+    "output_tray": 150,
+    "network_mode": "standalone"
+  },
+
+  "servers": [
+    {
+      "path": "servers/printer_web_server.py",
+      "port": 80
+    },
+    {
+      "path": "servers/snmp_server.py",
+      "port": 161
+    },
+    {
+      "path": "servers/jetdirect_server.py",
+      "port": 9100
+    }
+  ]
+}
