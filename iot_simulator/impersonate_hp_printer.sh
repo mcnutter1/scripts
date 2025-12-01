@@ -324,6 +324,357 @@ EOF
     log_info "System banners configured"
 }
 
+configure_ssh_banner() {
+    log_info "Configuring SSH banner to mimic HP printer..."
+    
+    if ! command -v sshd &>/dev/null; then
+        log_warn "SSH server not installed - skipping SSH banner configuration"
+        return
+    fi
+    
+    # Backup original SSH config
+    if [[ -f /etc/ssh/sshd_config && ! -f "$BACKUP_DIR/sshd_config.bak" ]]; then
+        cp /etc/ssh/sshd_config "$BACKUP_DIR/sshd_config.bak"
+        log_info "Backed up SSH configuration"
+    fi
+    
+    # Create HP printer SSH banner
+    cat > /etc/ssh/hp_printer_banner <<EOF
+
+╔════════════════════════════════════════════════════════════════╗
+║                                                                ║
+║                HP LaserJet Enterprise M609dn                   ║
+║                  Embedded SSH Service v2.0                     ║
+║                                                                ║
+║  Serial Number: $HP_SERIAL                                 ║
+║  Firmware:      2403293_000590                                 ║
+║  Hostname:      $HP_HOSTNAME                               ║
+║                                                                ║
+║  Authorized Access Only                                        ║
+║                                                                ║
+╚════════════════════════════════════════════════════════════════╝
+
+EOF
+    
+    # Modify SSH daemon configuration
+    # Remove any existing Banner directive
+    sed -i '/^Banner/d' /etc/ssh/sshd_config
+    
+    # Add HP printer banner
+    echo "Banner /etc/ssh/hp_printer_banner" >> /etc/ssh/sshd_config
+    
+    # Modify SSH version string to look like HP printer
+    # This requires patching the SSH server identification string
+    sed -i '/^DebianBanner/d' /etc/ssh/sshd_config
+    echo "DebianBanner no" >> /etc/ssh/sshd_config
+    
+    # Create wrapper script to modify SSH version string
+    cat > /usr/local/bin/ssh-hp-wrapper.sh <<'EOF_WRAPPER'
+#!/bin/bash
+# SSH wrapper to modify version string
+# This intercepts SSH connections and presents HP printer identification
+
+# Original SSH binary
+REAL_SSHD="/usr/sbin/sshd.real"
+
+# If this is the first time, backup the real sshd
+if [[ ! -f "$REAL_SSHD" ]]; then
+    mv /usr/sbin/sshd "$REAL_SSHD"
+fi
+
+# HP printer SSH version string
+# Format: SSH-2.0-HP_Embedded_SSH_2.0
+export SSH_CONNECTION_BANNER="SSH-2.0-HP_Embedded_SSH_2.0"
+
+# Execute real SSH daemon
+exec "$REAL_SSHD" "$@"
+EOF_WRAPPER
+    
+    chmod +x /usr/local/bin/ssh-hp-wrapper.sh
+    
+    # Note: Fully changing SSH version string requires recompiling OpenSSH
+    # or using tools like ssh-mitm. Document this limitation.
+    
+    log_info "SSH banner configured (version string modification requires OpenSSH recompilation)"
+    log_warn "To fully spoof SSH version, consider using: ssh-mitm or recompiled OpenSSH"
+    
+    # Restart SSH service
+    systemctl restart sshd || systemctl restart ssh
+    log_info "SSH service restarted with HP printer banner"
+}
+
+configure_http_banner() {
+    log_info "Configuring HTTP server banner..."
+    
+    # The Python web server in printer_web_server.py needs modification
+    # Create a config file that the Python server can read
+    
+    cat > /etc/hp_printer_http_config.conf <<EOF
+# HP Printer HTTP Server Configuration
+# This file is read by the Python HTTP server simulator
+
+SERVER_HEADER=HP-ChaiSOE/1.0
+SERVER_NAME=HP-LaserJet-M609dn
+FIRMWARE_VERSION=2403293_000590
+MODEL=$HP_MODEL
+SERIAL=$HP_SERIAL
+HOSTNAME=$HP_HOSTNAME
+EOF
+    
+    log_info "HTTP server configuration created at /etc/hp_printer_http_config.conf"
+    log_info "The Python web server will use these settings for HTTP headers"
+    
+    # If nginx is installed, configure it as well
+    if command -v nginx &>/dev/null; then
+        if [[ -f /etc/nginx/nginx.conf && ! -f "$BACKUP_DIR/nginx.conf.bak" ]]; then
+            cp /etc/nginx/nginx.conf "$BACKUP_DIR/nginx.conf.bak"
+        fi
+        
+        # Modify nginx server tokens
+        if grep -q "server_tokens" /etc/nginx/nginx.conf; then
+            sed -i 's/server_tokens.*/server_tokens off;/' /etc/nginx/nginx.conf
+        else
+            sed -i '/http {/a \    server_tokens off;' /etc/nginx/nginx.conf
+        fi
+        
+        # Add custom header for HP printer
+        if ! grep -q "more_set_headers" /etc/nginx/nginx.conf; then
+            log_info "Note: Install nginx-extras for custom header support"
+            log_info "  sudo apt-get install nginx-extras"
+        fi
+        
+        systemctl reload nginx 2>/dev/null || true
+        log_info "Nginx configured to hide version information"
+    fi
+}
+
+configure_tcp_fingerprint() {
+    log_info "Configuring TCP/IP stack fingerprint to mimic HP printer..."
+    
+    # Backup current sysctl settings
+    if [[ ! -f "$BACKUP_DIR/sysctl.conf.bak" ]]; then
+        sysctl -a > "$BACKUP_DIR/sysctl.conf.bak" 2>/dev/null || true
+    fi
+    
+    # Create HP printer TCP/IP stack configuration
+    # Based on real HP LaserJet fingerprints from nmap/p0f databases
+    
+    cat > /etc/sysctl.d/99-hp-printer-fingerprint.conf <<EOF
+# HP LaserJet Enterprise M609dn TCP/IP Stack Configuration
+# These settings mimic the TCP/IP fingerprint of a real HP printer
+# Based on nmap OS detection and p0f fingerprinting data
+
+# TCP Window Size (HP printers typically use smaller windows)
+net.ipv4.tcp_window_scaling = 1
+net.core.rmem_default = 87380
+net.core.wmem_default = 16384
+net.ipv4.tcp_rmem = 4096 87380 174760
+net.ipv4.tcp_wmem = 4096 16384 131072
+
+# TCP Options (HP printers support basic options)
+net.ipv4.tcp_timestamps = 1
+net.ipv4.tcp_sack = 1
+net.ipv4.tcp_window_scaling = 1
+
+# TTL Value (HP printers commonly use TTL 64 or 128)
+# For Linux, default is 64 which matches many embedded devices
+net.ipv4.ip_default_ttl = 64
+net.ipv6.conf.all.hop_limit = 64
+
+# TCP Keepalive (HP printers use different timings)
+net.ipv4.tcp_keepalive_time = 7200
+net.ipv4.tcp_keepalive_intvl = 75
+net.ipv4.tcp_keepalive_probes = 9
+
+# IP ID sequence (don't randomize for older device fingerprint)
+# Note: This may reduce security
+net.ipv4.ip_no_pmtu_disc = 0
+
+# Disable ECN (many printers don't support it)
+net.ipv4.tcp_ecn = 0
+
+# TCP SYN retries (embedded devices often use lower values)
+net.ipv4.tcp_syn_retries = 3
+net.ipv4.tcp_synack_retries = 3
+
+# Reduce TCP FIN timeout
+net.ipv4.tcp_fin_timeout = 30
+
+# Disable selective acknowledgments for older fingerprint
+# net.ipv4.tcp_sack = 0  # Commented out - may break functionality
+
+# Maximum number of queued connections
+net.core.somaxconn = 128
+
+# Disable IPv6 (many printers don't have IPv6 enabled)
+# Uncomment if you want to fully disable IPv6
+# net.ipv6.conf.all.disable_ipv6 = 1
+# net.ipv6.conf.default.disable_ipv6 = 1
+
+EOF
+    
+    # Apply the settings
+    sysctl -p /etc/sysctl.d/99-hp-printer-fingerprint.conf
+    
+    log_info "TCP/IP stack configured to mimic HP printer fingerprint"
+    log_warn "Note: Some settings may reduce security - use only in isolated lab environments"
+}
+
+configure_nmap_deception() {
+    log_info "Configuring additional OS fingerprint deception..."
+    
+    # Install nmap-os-db modification tools if available
+    if command -v nmap &>/dev/null; then
+        log_info "Nmap detected - consider using OSfuscate or similar tools for deeper OS spoofing"
+    fi
+    
+    # Create p0f signature information
+    cat > /tmp/hp_printer_p0f_signature.txt <<EOF
+# HP LaserJet Enterprise M609dn p0f Signature
+# This signature can be used with p0f for OS fingerprinting
+
+# TCP SYN Packet Signature:
+# Version, TTL, Options, MSS, Window Size, Window Scale, etc.
+
+# Typical HP LaserJet M609dn signature:
+# 4:64:0:*:mss*10,6:mss,sok,ts,nop,ws:df,id+:0
+
+# Breakdown:
+# - IPv4
+# - TTL: 64
+# - Don't Fragment bit set
+# - Window Size: varies (typically 5840 or 8192)
+# - TCP Options: MSS, SACK OK, Timestamp, NOP, Window Scale
+# - MSS: 1460 (standard Ethernet)
+# - Window Scale: 6
+
+# To use with p0f:
+# Add this signature to /etc/p0f/p0f.fp under [tcp:request] section
+
+label = s:unix:HP:LaserJet M609dn
+sig   = 4:64:0:*:mss*10,6:mss,sok,ts,nop,ws:df,id+:0
+sig   = 4:64:0:*:8192,6:mss,sok,ts,nop,ws:df,id+:0
+
+EOF
+    
+    log_info "P0f signature reference created at /tmp/hp_printer_p0f_signature.txt"
+    log_info "To fully implement: Add signature to /etc/p0f/p0f.fp"
+}
+
+configure_service_fingerprints() {
+    log_info "Configuring service-level fingerprints..."
+    
+    # Configure common service banners
+    
+    # FTP (if installed)
+    if command -v vsftpd &>/dev/null; then
+        if [[ ! -f "$BACKUP_DIR/vsftpd.conf.bak" ]]; then
+            cp /etc/vsftpd.conf "$BACKUP_DIR/vsftpd.conf.bak" 2>/dev/null || true
+        fi
+        
+        # Set HP printer FTP banner
+        echo "ftpd_banner=HP LaserJet M609dn FTP Server" >> /etc/vsftpd.conf
+        systemctl restart vsftpd 2>/dev/null || true
+        log_info "FTP banner configured"
+    fi
+    
+    # Telnet (if installed) - HP printers often have telnet enabled
+    if command -v telnetd &>/dev/null; then
+        log_info "Telnet detected - banner configured via /etc/issue"
+    fi
+    
+    # Create a summary file
+    cat > /root/hp_printer_fingerprint_summary.txt <<EOF
+╔════════════════════════════════════════════════════════════════════════════╗
+║                  HP PRINTER FINGERPRINT CONFIGURATION                       ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+DEVICE INFORMATION:
+  Model:           $HP_MODEL
+  Serial Number:   $HP_SERIAL
+  Firmware:        2403293_000590 (Vulnerable)
+  MAC Address:     $HP_MAC_ADDRESS
+  Hostname:        $HP_HOSTNAME
+
+CONFIGURED FINGERPRINTS:
+  
+  ✓ MAC Address         - Spoofed to HP OUI range (A0:B3:CC)
+  ✓ Hostname            - Changed to HP naming convention
+  ✓ DHCP Client ID      - Using HP MAC address
+  ✓ mDNS/Bonjour        - Advertising as HP printer
+  ✓ TCP/IP Stack        - Modified sysctl parameters
+  ✓ SSH Banner          - HP Embedded SSH Service
+  ✓ HTTP Headers        - HP-ChaiSOE/1.0 server header
+  ✓ System Banners      - HP LaserJet identification
+
+NMAP FINGERPRINT DETAILS:
+  
+  Expected OS Detection:
+    - "HP LaserJet printer"
+    - "HP embedded device"
+    - "VxWorks or embedded Linux"
+  
+  TCP Characteristics:
+    - TTL: 64
+    - Window Size: 5840-8192
+    - TCP Options: MSS, SACK, Timestamps, Window Scaling
+    - Don't Fragment: Yes
+    - Initial Window: 6 MSS
+
+P0F FINGERPRINT:
+  
+  Signature: 4:64:0:*:mss*10,6:mss,sok,ts,nop,ws:df,id+:0
+  See: /tmp/hp_printer_p0f_signature.txt
+
+ACTIVE SERVICES:
+  
+  Port 80/tcp   - HTTP  (HP Embedded Web Server)
+  Port 161/udp  - SNMP  (Printer management)
+  Port 9100/tcp - JetDirect (Print spooler)
+  Port 22/tcp   - SSH   (HP Embedded SSH - if enabled)
+  Port 3702/udp - WS-Discovery (Windows printer discovery)
+  Port 5355/udp - LLMNR (Link-Local Multicast Name Resolution)
+
+VERIFICATION COMMANDS:
+  
+  # Check MAC address
+  ip link show $INTERFACE | grep ether
+  
+  # Check hostname
+  hostname
+  
+  # Test SNMP
+  snmpwalk -v2c -c public localhost system
+  
+  # Check TCP fingerprint
+  sudo nmap -O localhost
+  
+  # Check HTTP banner
+  curl -I http://localhost
+  
+  # Check SSH banner
+  ssh -v localhost 2>&1 | grep "Server version"
+
+LIMITATIONS:
+  
+  ⚠ SSH version string requires OpenSSH recompilation for full spoofing
+  ⚠ Some fingerprint techniques detectable by advanced scanners
+  ⚠ TCP/IP stack spoofing may reduce network performance
+  ⚠ These settings reduce security - USE ONLY IN LAB ENVIRONMENTS
+
+RESTORATION:
+  
+  To restore original configuration:
+    sudo $0 stop
+
+CREATED: $(date)
+SCRIPT VERSION: 2.0
+
+EOF
+    
+    log_info "Fingerprint summary created at /root/hp_printer_fingerprint_summary.txt"
+}
+
 configure_firewall() {
     log_info "Configuring firewall rules for printer services..."
     
@@ -408,6 +759,39 @@ restore_configuration() {
         systemctl restart snmpd 2>/dev/null || true
         log_info "Restored SNMP configuration"
     fi
+    
+    # Restore SSH configuration
+    if [[ -f "$BACKUP_DIR/sshd_config.bak" ]]; then
+        cp "$BACKUP_DIR/sshd_config.bak" /etc/ssh/sshd_config
+        rm -f /etc/ssh/hp_printer_banner
+        rm -f /usr/local/bin/ssh-hp-wrapper.sh
+        systemctl restart sshd || systemctl restart ssh
+        log_info "Restored SSH configuration"
+    fi
+    
+    # Remove HTTP configuration
+    if [[ -f /etc/hp_printer_http_config.conf ]]; then
+        rm /etc/hp_printer_http_config.conf
+        log_info "Removed HTTP printer configuration"
+    fi
+    
+    # Restore nginx if modified
+    if [[ -f "$BACKUP_DIR/nginx.conf.bak" ]]; then
+        cp "$BACKUP_DIR/nginx.conf.bak" /etc/nginx/nginx.conf
+        systemctl reload nginx 2>/dev/null || true
+        log_info "Restored Nginx configuration"
+    fi
+    
+    # Restore TCP/IP stack settings
+    if [[ -f /etc/sysctl.d/99-hp-printer-fingerprint.conf ]]; then
+        rm /etc/sysctl.d/99-hp-printer-fingerprint.conf
+        sysctl --system
+        log_info "Restored TCP/IP stack settings"
+    fi
+    
+    # Clean up temporary files
+    rm -f /tmp/hp_printer_p0f_signature.txt
+    rm -f /root/hp_printer_fingerprint_summary.txt
     
     # Restore NetworkManager settings
     if command -v nmcli &>/dev/null; then
@@ -505,6 +889,11 @@ start_impersonation() {
     configure_snmp
     configure_dhcp_identifier
     set_system_banner
+    configure_ssh_banner
+    configure_http_banner
+    configure_tcp_fingerprint
+    configure_nmap_deception
+    configure_service_fingerprints
     configure_firewall
     
     echo ""
@@ -515,9 +904,15 @@ start_impersonation() {
     log_info "System is now impersonating: $HP_MODEL"
     log_info "MAC Address: $HP_MAC_ADDRESS"
     log_info "Hostname: $HP_HOSTNAME"
+    log_info "Firmware: 2403293_000590 (Vulnerable)"
+    echo ""
+    log_info "Fingerprint summary: /root/hp_printer_fingerprint_summary.txt"
     echo ""
     log_warn "Remember to start the printer simulator services!"
-    log_info "Run: cd /path/to/iot_simulator && python3 server.py start"
+    log_info "Run: cd /path/to/iot_simulator && python3 server.py --config config_hp_printer.json"
+    echo ""
+    log_warn "⚠ IMPORTANT: These settings reduce security"
+    log_warn "⚠ USE ONLY in isolated lab/testing environments"
     echo ""
 }
 

@@ -2,17 +2,23 @@
 """
 HP JetDirect Server Simulator
 Implements HP JetDirect protocol on port 9100 for raw printing
+Fully accepts and logs print jobs to files
 """
 import sys
 import os
 import socket
 import threading
 from datetime import datetime
+import json
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from core_logger import get_logger
 from shared import parse_args
 
 logger = get_logger("jetdirect_server")
+
+# Print jobs directory
+PRINT_JOBS_DIR = os.path.join(os.path.dirname(__file__), '..', 'print_jobs')
+PRINT_LOG_FILE = os.path.join(PRINT_JOBS_DIR, 'print_log.json')
 
 # Global config variables
 SYSTEM_NAME = ""
@@ -189,7 +195,7 @@ class JetDirectHandler:
             return None
     
     def simulate_print_job(self, job_data):
-        """Simulate processing a print job"""
+        """Simulate processing a print job and save to file"""
         global PAGE_COUNT
         
         # Try to detect document type
@@ -213,6 +219,57 @@ class JetDirectHandler:
         
         # Update page count
         PAGE_COUNT += pages_estimated
+        
+        # Save print job to file
+        try:
+            # Create print jobs directory if it doesn't exist
+            os.makedirs(PRINT_JOBS_DIR, exist_ok=True)
+            
+            # Generate filename with timestamp
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            ext = {'PDF': 'pdf', 'PostScript': 'ps', 'PCL': 'pcl'}.get(doc_type, 'prn')
+            filename = f"job_{self.job_id}_{timestamp}.{ext}"
+            filepath = os.path.join(PRINT_JOBS_DIR, filename)
+            
+            # Save job data
+            with open(filepath, 'wb') as f:
+                f.write(job_data)
+            
+            logger.info(f"Print job saved to {filepath}")
+            print(f"[JetDirect] Job saved: {filename}")
+            
+            # Log to print log
+            log_entry = {
+                'job_id': self.job_id,
+                'timestamp': datetime.now().isoformat(),
+                'source_ip': self.address[0],
+                'source_port': self.address[1],
+                'document_type': doc_type,
+                'pages': pages_estimated,
+                'size_bytes': len(job_data),
+                'filename': filename,
+                'status': 'completed'
+            }
+            
+            # Append to log file
+            log_entries = []
+            if os.path.exists(PRINT_LOG_FILE):
+                try:
+                    with open(PRINT_LOG_FILE, 'r') as f:
+                        log_entries = json.load(f)
+                except:
+                    log_entries = []
+            
+            log_entries.append(log_entry)
+            
+            with open(PRINT_LOG_FILE, 'w') as f:
+                json.dump(log_entries, f, indent=2)
+            
+            print(f"[JetDirect] Print log updated: {len(log_entries)} total jobs")
+            
+        except Exception as e:
+            logger.error(f"Error saving print job: {e}")
+            print(f"[JetDirect] Error saving job: {e}")
 
 
 class JetDirectServer:

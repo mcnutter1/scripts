@@ -1,10 +1,10 @@
 # HP Printer Simulator
 
-This is a comprehensive HP LaserJet printer simulator that simulates an HP LaserJet Enterprise M609dn with full network functionality.
+This is a comprehensive HP LaserJet printer simulator that simulates an HP LaserJet Enterprise M609dn with full network functionality and **Windows printer discovery support**.
 
 ## Features
 
-The simulator includes three main server components:
+The simulator includes five main server components:
 
 ### 1. **SNMP Server** (Port 161)
 - Responds to SNMP queries with printer-specific OIDs
@@ -16,17 +16,50 @@ The simulator includes three main server components:
 ### 2. **HP JetDirect Server** (Port 9100)
 - Implements HP JetDirect raw printing protocol
 - Accepts print jobs over TCP port 9100
+- **Saves all print jobs to files** with metadata logging
 - Supports PJL (Printer Job Language) commands
 - Responds to printer status queries
 - Logs print job information (type, size, estimated pages)
+- Maintains detailed print log in JSON format
 
 ### 3. **Embedded Web Server** (Port 80)
-- Full HP-style web interface
+- Full HP-style web interface with authentic styling
 - **Status page**: Device overview, toner levels, paper trays
 - **Supplies page**: Detailed supply information and ordering
 - **Network page**: Network configuration and services
 - **Device Info page**: Complete device details and usage statistics
 - **Print Quality page**: Maintenance tools and settings
+
+### 4. **WS-Discovery Server** (Port 3702)
+- Windows Web Services Discovery protocol
+- Enables Windows "Add Printer" wizard discovery
+- Responds to Probe and Resolve requests
+- Sends Hello announcements on startup
+- **Makes printer automatically appear in Windows printer search**
+
+### 5. **LLMNR Server** (Port 5355)
+- Link-Local Multicast Name Resolution
+- Enables hostname resolution without DNS
+- Windows systems can find printer by hostname
+- Works on isolated networks
+
+## Windows Printer Discovery
+
+**The printer is now fully discoverable by Windows!**
+
+When you use Windows "Add Printer" wizard, the simulator:
+- ✅ Appears automatically in the device list
+- ✅ Shows as "HP LaserJet Enterprise M609dn"
+- ✅ Provides all printer information via SNMP
+- ✅ Accepts print jobs via JetDirect
+- ✅ Resolves hostname without DNS server
+
+See **[WINDOWS_DISCOVERY.md](WINDOWS_DISCOVERY.md)** for complete details on:
+- How Windows discovery works
+- Setting up firewall rules
+- Testing discovery protocols
+- Troubleshooting discovery issues
+- Print job logging and monitoring
 
 ## Configuration
 
@@ -39,6 +72,7 @@ The simulator uses `config_hp_printer.json` for configuration:
     "ip": "192.168.1.100",
     "mac": "A0:B3:CC:D4:E5:F6",
     "hostname": "HPLJ-M609-001",
+    "uuid": "12345678-90ab-cdef-1234-567890abcdef",
     "serial": "JPBCS12345",
     "model": "HP LaserJet Enterprise M609dn",
     "firmware": "2409081_052604",

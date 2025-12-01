@@ -4,10 +4,11 @@
     "ip": "192.168.1.100",
     "mac": "A0:B3:CC:D4:E5:F6",
     "hostname": "HPLJ-M609-001",
+    "uuid": "12345678-90ab-cdef-1234-567890abcdef",
     "log_level": "INFO",
     "serial": "JPBCS12345",
     "model": "HP LaserJet Enterprise M609dn",
-    "firmware": "2409081_052604",
+    "firmware": "2403293_000590",
     "location": "Building A - Floor 2",
     "contact": "IT Department",
     "page_count": 45782,
@@ -31,6 +32,14 @@
     {
       "path": "servers/jetdirect_server.py",
       "port": 9100
+    },
+    {
+      "path": "servers/ws_discovery_server.py",
+      "port": 3702
+    },
+    {
+      "path": "servers/llmnr_server.py",
+      "port": 5355
     }
   ]
 }
