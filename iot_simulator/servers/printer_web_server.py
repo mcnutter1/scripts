@@ -57,34 +57,34 @@ def HTML_HEAD():
     <title>HP {MODEL} - Embedded Web Server</title>
     <meta charset="UTF-8">
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { 
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{ 
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
             background-color: #f5f5f5;
             color: #333;
-        }
-        header { 
+        }}
+        header {{ 
             background: linear-gradient(135deg, #0096D6 0%, #0073A8 100%);
             color: white; 
             padding: 20px 30px;
             box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-        }
-        header h1 { 
+        }}
+        header h1 {{ 
             font-size: 24px; 
             font-weight: 500;
             margin-bottom: 5px;
-        }
-        header .subtitle { 
+        }}
+        header .subtitle {{ 
             font-size: 14px; 
             opacity: 0.9;
-        }
-        nav { 
+        }}
+        nav {{ 
             background: #fff;
             padding: 0;
             box-shadow: 0 2px 5px rgba(0,0,0,0.05);
             border-bottom: 3px solid #0096D6;
-        }
-        nav a { 
+        }}
+        nav a {{ 
             display: inline-block;
             padding: 15px 25px;
             text-decoration: none; 
@@ -92,74 +92,74 @@ def HTML_HEAD():
             border-bottom: 3px solid transparent;
             transition: all 0.3s;
             font-weight: 500;
-        }
-        nav a:hover { 
+        }}
+        nav a:hover {{ 
             background-color: #f0f0f0;
             border-bottom-color: #0096D6;
-        }
-        .container {
+        }}
+        .container {{
             max-width: 1200px;
             margin: 30px auto;
             padding: 0 20px;
-        }
-        .card { 
+        }}
+        .card {{ 
             background: white;
             padding: 25px;
             margin-bottom: 20px;
             border-radius: 8px;
             box-shadow: 0 2px 10px rgba(0,0,0,0.08);
-        }
-        .card h2 { 
+        }}
+        .card h2 {{ 
             color: #0096D6;
             margin-bottom: 20px;
             font-size: 20px;
             border-bottom: 2px solid #0096D6;
             padding-bottom: 10px;
-        }
-        .info-grid {
+        }}
+        .info-grid {{
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
             gap: 15px;
-        }
-        .info-item { 
+        }}
+        .info-item {{ 
             padding: 12px;
             background: #f9f9f9;
             border-radius: 5px;
             border-left: 4px solid #0096D6;
-        }
-        .info-label { 
+        }}
+        .info-label {{ 
             font-weight: 600;
             color: #555;
             display: block;
             margin-bottom: 5px;
             font-size: 13px;
             text-transform: uppercase;
-        }
-        .info-value { 
+        }}
+        .info-value {{ 
             font-size: 16px;
             color: #333;
-        }
-        .status-ok { 
+        }}
+        .status-ok {{ 
             color: #28a745;
             font-weight: 600;
-        }
-        .status-warning { 
+        }}
+        .status-warning {{ 
             color: #ffc107;
             font-weight: 600;
-        }
-        .status-error { 
+        }}
+        .status-error {{ 
             color: #dc3545;
             font-weight: 600;
-        }
-        .progress-bar {
+        }}
+        .progress-bar {{
             width: 100%;
             height: 30px;
             background: #e0e0e0;
             border-radius: 15px;
             overflow: hidden;
             position: relative;
-        }
-        .progress-fill {
+        }}
+        .progress-fill {{
             height: 100%;
             background: linear-gradient(90deg, #28a745, #20c997);
             display: flex;
@@ -168,55 +168,55 @@ def HTML_HEAD():
             color: white;
             font-weight: 600;
             transition: width 0.3s;
-        }
-        .progress-warning { background: linear-gradient(90deg, #ffc107, #ffb300); }
-        .progress-error { background: linear-gradient(90deg, #dc3545, #c82333); }
-        footer { 
+        }}
+        .progress-warning {{ background: linear-gradient(90deg, #ffc107, #ffb300); }}
+        .progress-error {{ background: linear-gradient(90deg, #dc3545, #c82333); }}
+        footer {{ 
             background: #333;
             color: white;
             text-align: center;
             padding: 20px;
             margin-top: 50px;
-        }
-        .logo {
+        }}
+        .logo {{
             font-size: 28px;
             font-weight: bold;
             letter-spacing: -1px;
-        }
-        table {
+        }}
+        table {{
             width: 100%;
             border-collapse: collapse;
             margin-top: 15px;
-        }
-        table th {
+        }}
+        table th {{
             background: #0096D6;
             color: white;
             padding: 12px;
             text-align: left;
             font-weight: 500;
-        }
-        table td {
+        }}
+        table td {{
             padding: 12px;
             border-bottom: 1px solid #e0e0e0;
-        }
-        table tr:hover {
+        }}
+        table tr:hover {{
             background: #f9f9f9;
-        }
-        .alert {
+        }}
+        .alert {{
             padding: 15px;
             border-radius: 5px;
             margin-bottom: 20px;
-        }
-        .alert-success {
+        }}
+        .alert-success {{
             background: #d4edda;
             color: #155724;
             border-left: 4px solid #28a745;
-        }
-        .alert-info {
+        }}
+        .alert-info {{
             background: #d1ecf1;
             color: #0c5460;
             border-left: 4px solid #17a2b8;
-        }
+        }}
     </style>
 </head>
 """
